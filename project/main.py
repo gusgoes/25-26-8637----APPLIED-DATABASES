@@ -10,7 +10,7 @@ MYSQL_CONFIG = {
     "database": "appdbproj"
 }
 
-NEO4J_URI      = "neo4j://127.0.0.1:7687"
+NEO4J_URI      = "bolt://127.0.0.1:7687"
 NEO4J_USER     = "neo4j"
 NEO4J_PASSWORD = "neo4j123"
 
@@ -42,6 +42,28 @@ def load_rooms(mysql_conn):
     cursor.close()
     return rooms
 
+# ─── Helpers: show reference data ────────────────────────────────────────────
+
+def show_companies(mysql_conn):
+    cursor = mysql_conn.cursor()
+    cursor.execute("SELECT companyID, companyName, industry FROM company ORDER BY companyID")
+    rows = cursor.fetchall()
+    cursor.close()
+    print(f"\n  {'ID':<6} {'Company':<20} {'Industry'}")
+    print("  " + "-" * 45)
+    for row in rows:
+        print(f"  {row[0]:<6} {row[1]:<20} {row[2]}")
+
+def show_attendees(mysql_conn):
+    cursor = mysql_conn.cursor()
+    cursor.execute("SELECT attendeeID, attendeeName, attendeeCompanyID FROM attendee ORDER BY attendeeID")
+    rows = cursor.fetchall()
+    cursor.close()
+    print(f"\n  {'ID':<6} {'Name':<25} {'CompanyID'}")
+    print("  " + "-" * 40)
+    for row in rows:
+        print(f"  {row[0]:<6} {row[1]:<25} {row[2]}")
+
 # ─── Menu ─────────────────────────────────────────────────────────────────────
 
 def print_menu():
@@ -54,6 +76,10 @@ def print_menu():
     print("  4. View Connected Attendees")
     print("  5. Add Attendee Connection")
     print("  6. View Rooms")
+    print("  ─── Innovations ───────────────")
+    print("  7. Delete Attendee")
+    print("  8. Most Connected Attendees")
+    print("  9. Search Attendee by Name")
     print("  x. Exit")
     print("=" * 50)
 
@@ -121,8 +147,10 @@ def option2(mysql_conn):
 # ─── Option 3: Add New Attendee ────────────────────────────────────────────────
 
 def option3(mysql_conn):
+    print("\nAvailable companies:")
+    show_companies(mysql_conn)
     try:
-        attendee_id  = int(input("Enter Attendee ID (integer): ").strip())
+        attendee_id  = int(input("\nEnter Attendee ID (integer): ").strip())
         name         = input("Enter Attendee Name: ").strip()
         dob          = input("Enter Date of Birth (YYYY-MM-DD): ").strip()
         gender       = input("Enter Gender (Male/Female): ").strip()
@@ -160,8 +188,10 @@ def option3(mysql_conn):
 # ─── Option 4: View Connected Attendees ───────────────────────────────────────
 
 def option4(mysql_conn, neo4j_driver):
+    print("\nAvailable attendees:")
+    show_attendees(mysql_conn)
     try:
-        attendee_id = int(input("Enter Attendee ID: ").strip())
+        attendee_id = int(input("\nEnter Attendee ID: ").strip())
     except ValueError:
         print("Invalid input: ID must be an integer.")
         return
@@ -202,8 +232,10 @@ def option4(mysql_conn, neo4j_driver):
 # ─── Option 5: Add Attendee Connection ────────────────────────────────────────
 
 def option5(mysql_conn, neo4j_driver):
+    print("\nAvailable attendees:")
+    show_attendees(mysql_conn)
     try:
-        id1 = int(input("Enter first Attendee ID: ").strip())
+        id1 = int(input("\nEnter first Attendee ID: ").strip())
         id2 = int(input("Enter second Attendee ID: ").strip())
     except ValueError:
         print("Invalid input: IDs must be integers.")
@@ -253,6 +285,99 @@ def option5(mysql_conn, neo4j_driver):
     else:
         print(f"Connection already exists between ID {id1} and ID {id2}.")
 
+# ─── Option 7: Delete Attendee ───────────────────────────────────────────────
+
+def option7(mysql_conn, neo4j_driver):
+    print("\nAvailable attendees:")
+    show_attendees(mysql_conn)
+    try:
+        attendee_id = int(input("\nEnter Attendee ID to delete: ").strip())
+    except ValueError:
+        print("Invalid input: ID must be an integer.")
+        return
+
+    cursor = mysql_conn.cursor()
+    cursor.execute("SELECT attendeeName FROM attendee WHERE attendeeID = %s", (attendee_id,))
+    row = cursor.fetchone()
+    if not row:
+        print(f"Attendee ID {attendee_id} not found.")
+        cursor.close()
+        return
+
+    confirm = input(f"Are you sure you want to delete '{row[0]}' (ID {attendee_id})? (yes/no): ").strip().lower()
+    if confirm != "yes":
+        print("Deletion cancelled.")
+        cursor.close()
+        return
+
+    try:
+        cursor.execute("DELETE FROM registration WHERE attendeeID = %s", (attendee_id,))
+        cursor.execute("DELETE FROM attendee WHERE attendeeID = %s", (attendee_id,))
+        mysql_conn.commit()
+
+        def remove_node(tx, aid):
+            tx.run("MATCH (a:Attendee {AttendeeID: $id}) DETACH DELETE a", id=aid)
+
+        with neo4j_driver.session() as session:
+            session.execute_write(remove_node, attendee_id)
+
+        print(f"Attendee '{row[0]}' (ID {attendee_id}) deleted from MySQL and Neo4j.")
+    except mysql.connector.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        cursor.close()
+
+# ─── Option 8: Most Connected Attendees ───────────────────────────────────────
+
+def option8(mysql_conn, neo4j_driver):
+    def get_top_connected(tx):
+        result = tx.run(
+            "MATCH (a:Attendee)-[:CONNECTED_TO]-(b:Attendee) "
+            "RETURN a.AttendeeID AS id, count(b) AS connections "
+            "ORDER BY connections DESC LIMIT 10"
+        )
+        return [(record["id"], record["connections"]) for record in result]
+
+    with neo4j_driver.session() as session:
+        top = session.execute_read(get_top_connected)
+
+    if not top:
+        print("No connections found in the network.")
+        return
+
+    print(f"\n{'Rank':<6} {'ID':<8} {'Name':<25} {'Connections'}")
+    print("-" * 55)
+    cursor = mysql_conn.cursor()
+    for rank, (aid, count) in enumerate(top, start=1):
+        cursor.execute("SELECT attendeeName FROM attendee WHERE attendeeID = %s", (aid,))
+        name_row = cursor.fetchone()
+        name = name_row[0] if name_row else "(unknown)"
+        print(f"{rank:<6} {aid:<8} {name:<25} {count}")
+    cursor.close()
+
+# ─── Option 9: Search Attendee by Name ────────────────────────────────────────
+
+def option9(mysql_conn):
+    name = input("Enter attendee name (or part of it): ").strip()
+    cursor = mysql_conn.cursor()
+    cursor.execute(
+        "SELECT a.attendeeID, a.attendeeName, a.attendeeDOB, a.attendeeGender, c.companyName "
+        "FROM attendee a JOIN company c ON a.attendeeCompanyID = c.companyID "
+        "WHERE a.attendeeName LIKE %s ORDER BY a.attendeeName",
+        (f"%{name}%",)
+    )
+    results = cursor.fetchall()
+    cursor.close()
+
+    if not results:
+        print(f"No attendees found matching '{name}'.")
+        return
+
+    print(f"\n{'ID':<6} {'Name':<25} {'DOB':<12} {'Gender':<8} {'Company'}")
+    print("-" * 70)
+    for row in results:
+        print(f"{row[0]:<6} {row[1]:<25} {str(row[2]):<12} {row[3]:<8} {row[4]}")
+
 # ─── Option 6: View Rooms (from cache) ────────────────────────────────────────
 
 def option6(rooms_cache):
@@ -284,6 +409,12 @@ def main():
             option5(mysql_conn, neo4j_driver)
         elif choice == "6":
             option6(rooms_cache)
+        elif choice == "7":
+            option7(mysql_conn, neo4j_driver)
+        elif choice == "8":
+            option8(mysql_conn, neo4j_driver)
+        elif choice == "9":
+            option9(mysql_conn)
         elif choice == "x":
             print("Goodbye!")
             break
