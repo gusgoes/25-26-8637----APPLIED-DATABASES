@@ -125,9 +125,9 @@ def option2(mysql_conn):
         SELECT a.attendeeID, a.attendeeName, s.sessionTitle, s.sessionDate, r.roomName
         FROM attendee a
         JOIN company c ON a.attendeeCompanyID = c.companyID
-        JOIN registration reg ON a.attendeeID = reg.attendeeID
-        JOIN session s ON reg.sessionID = s.sessionID
-        JOIN room r ON s.roomID = r.roomID
+        LEFT JOIN registration reg ON a.attendeeID = reg.attendeeID
+        LEFT JOIN session s ON reg.sessionID = s.sessionID
+        LEFT JOIN room r ON s.roomID = r.roomID
         WHERE c.companyName = %s
         ORDER BY a.attendeeName, s.sessionDate
     """
@@ -136,13 +136,16 @@ def option2(mysql_conn):
     cursor.close()
 
     if not results:
-        print(f"No registrations found for attendees from '{company}'.")
+        print(f"No attendees found from '{company}'.")
         return
 
     print(f"\n{'ID':<6} {'Attendee':<20} {'Session':<35} {'Date':<12} {'Room'}")
     print("-" * 85)
     for row in results:
-        print(f"{row[0]:<6} {row[1]:<20} {row[2]:<35} {str(row[3]):<12} {row[4]}")
+        session = row[2] if row[2] else "(no registrations)"
+        date    = str(row[3]) if row[3] else ""
+        room    = row[4] if row[4] else ""
+        print(f"{row[0]:<6} {row[1]:<20} {session:<35} {date:<12} {room}")
 
 # ─── Option 3: Add New Attendee ────────────────────────────────────────────────
 
