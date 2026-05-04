@@ -6,13 +6,62 @@
 
 OVERVIEW
 --------
-Three innovation features were added to the base application,
+Four innovation features were added to the base application,
 each extending the system in a meaningful and technically
-distinct way. All features are accessible from the main menu
-under options 7, 8, and 9.
+distinct way. Three features are accessible from the main menu
+under options 7, 8, and 9. A fourth runs automatically at
+startup before any database connection is made.
 
 No additional packages are required. All innovations use only
-mysql-connector-python and neo4j, which are already installed.
+mysql-connector-python, neo4j, and getpass (Python standard
+library — no installation needed).
+
+
+------------------------------------------------------------
+INNOVATION 4 — Startup: Secure Credential Prompt
+------------------------------------------------------------
+
+WHAT IT DOES:
+  Instead of hardcoding database credentials in the source
+  code, the application prompts the user to enter their
+  MySQL and Neo4j credentials interactively at startup,
+  before any connection is attempted. Passwords are hidden
+  while being typed using Python's built-in getpass module.
+
+WHY IT ADDS VALUE:
+  Hardcoding credentials in source code is a well-known
+  security vulnerability (OWASP A07 — Identification and
+  Authentication Failures). If the repository is public,
+  any committed password is immediately exposed. This
+  feature also makes the application portable: any user
+  with a local MySQL and Neo4j installation can run it
+  without modifying the source code.
+
+HOW IT WORKS:
+  1. At launch, a prompt_credentials() function runs before
+     any database connection is made.
+  2. The user is shown a clear setup banner explaining what
+     is needed.
+  3. They enter their MySQL username (default: root) and
+     password, then their Neo4j username (default: neo4j)
+     and password.
+  4. Passwords are collected using getpass.getpass(), which
+     suppresses on-screen echo so the password is never
+     visible in the terminal.
+  5. The credentials are passed to connect_mysql() and
+     connect_neo4j() as arguments — nothing is stored as a
+     global variable or written to disk.
+
+KEY TECHNICAL POINTS:
+  - getpass is part of the Python standard library — no
+    additional installation required.
+  - Pressing Enter on the username fields accepts the most
+    common defaults (root / neo4j) to minimise friction.
+  - No credentials are hardcoded or committed to the
+    repository at any point.
+  - The design follows the principle of least surprise: the
+    prompt appears once at startup and the rest of the
+    application behaves identically to before.
 
 
 ------------------------------------------------------------

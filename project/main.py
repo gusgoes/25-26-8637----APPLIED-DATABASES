@@ -1,33 +1,51 @@
 import mysql.connector
 import neo4j
+import getpass
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
-MYSQL_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "GGFggf2@2@",
-    "database": "appdbproj"
-}
-
+MYSQL_DATABASE = "appdbproj"
 NEO4J_URI      = "bolt://127.0.0.1:7687"
-NEO4J_USER     = "neo4j"
-NEO4J_PASSWORD = "neo4j123"
+
+def prompt_credentials():
+    print("\n" + "=" * 50)
+    print(" DATABASE CREDENTIALS SETUP")
+    print("=" * 50)
+    print(" Enter your local MySQL and Neo4j credentials.")
+    print(" (These are the credentials you set when")
+    print("  installing MySQL and Neo4j on your machine.)")
+    print("=" * 50)
+
+    print("\n--- MySQL ---")
+    mysql_user     = input("  MySQL username [default: root]: ").strip() or "root"
+    mysql_password = getpass.getpass("  MySQL password: ")
+
+    print("\n--- Neo4j ---")
+    neo4j_user     = input("  Neo4j username [default: neo4j]: ").strip() or "neo4j"
+    neo4j_password = getpass.getpass("  Neo4j password: ")
+
+    mysql_config = {
+        "host":     "localhost",
+        "user":     mysql_user,
+        "password": mysql_password,
+        "database": MYSQL_DATABASE
+    }
+    return mysql_config, neo4j_user, neo4j_password
 
 # ─── Startup: connect to both databases and cache rooms ───────────────────────
 
-def connect_mysql():
+def connect_mysql(mysql_config):
     try:
-        conn = mysql.connector.connect(**MYSQL_CONFIG)
+        conn = mysql.connector.connect(**mysql_config)
         print("MySQL connected.")
         return conn
     except mysql.connector.Error as e:
         print(f"MySQL connection failed: {e}")
         raise SystemExit(1)
 
-def connect_neo4j():
+def connect_neo4j(neo4j_user, neo4j_password):
     try:
-        driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(neo4j_user, neo4j_password))
         driver.verify_connectivity()
         print("Neo4j connected.")
         return driver
@@ -392,8 +410,9 @@ def option6(rooms_cache):
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    mysql_conn   = connect_mysql()
-    neo4j_driver = connect_neo4j()
+    mysql_config, neo4j_user, neo4j_password = prompt_credentials()
+    mysql_conn   = connect_mysql(mysql_config)
+    neo4j_driver = connect_neo4j(neo4j_user, neo4j_password)
     rooms_cache  = load_rooms(mysql_conn)
 
     while True:
