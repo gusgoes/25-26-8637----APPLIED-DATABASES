@@ -144,6 +144,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Notas pessoais — nao commitar
+.meu_guia_pessoal.txt
+
 # Spyder project settings
 .spyderproject
 .spyproject

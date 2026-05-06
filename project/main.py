@@ -82,6 +82,19 @@ def show_attendees(mysql_conn):
     for row in rows:
         print(f"  {row[0]:<6} {row[1]:<25} {row[2]}")
 
+def show_sessions(mysql_conn):
+    cursor = mysql_conn.cursor()
+    cursor.execute(
+        "SELECT s.sessionID, s.sessionTitle, s.speakerName, s.sessionDate, r.roomName "
+        "FROM session s JOIN room r ON s.roomID = r.roomID ORDER BY s.sessionDate"
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    print(f"\n  {'ID':<6} {'Title':<35} {'Speaker':<20} {'Date':<12} {'Room'}")
+    print("  " + "-" * 85)
+    for row in rows:
+        print(f"  {row[0]:<6} {row[1]:<35} {row[2]:<20} {str(row[3]):<12} {row[4]}")
+
 # ─── Menu ─────────────────────────────────────────────────────────────────────
 
 def print_menu():
@@ -98,6 +111,7 @@ def print_menu():
     print("  7. Delete Attendee")
     print("  8. Most Connected Attendees")
     print("  9. Search Attendee by Name")
+    print("  10. Register Attendee for Session")
     print("  x. Exit")
     print("=" * 50)
 
@@ -399,6 +413,69 @@ def option9(mysql_conn):
     for row in results:
         print(f"{row[0]:<6} {row[1]:<25} {str(row[2]):<12} {row[3]:<8} {row[4]}")
 
+# ─── Option 10: Register Attendee for Session ────────────────────────────────
+
+def option10(mysql_conn):
+    show_attendees(mysql_conn)
+    try:
+        attendee_id = int(input("\nEnter Attendee ID to register: ").strip())
+    except ValueError:
+        print("Invalid input: ID must be an integer.")
+        return
+
+    cursor = mysql_conn.cursor()
+    cursor.execute("SELECT attendeeName FROM attendee WHERE attendeeID = %s", (attendee_id,))
+    row = cursor.fetchone()
+    if not row:
+        print(f"Attendee ID {attendee_id} not found.")
+        cursor.close()
+        return
+    attendee_name = row[0]
+
+    show_sessions(mysql_conn)
+    try:
+        session_id = int(input("\nEnter Session ID to register for: ").strip())
+    except ValueError:
+        print("Invalid input: Session ID must be an integer.")
+        cursor.close()
+        return
+
+    cursor.execute("SELECT sessionTitle FROM session WHERE sessionID = %s", (session_id,))
+    row = cursor.fetchone()
+    if not row:
+        print(f"Session ID {session_id} not found.")
+        cursor.close()
+        return
+    session_title = row[0]
+
+    # Check for duplicate registration
+    cursor.execute(
+        "SELECT registrationID FROM registration WHERE attendeeID = %s AND sessionID = %s",
+        (attendee_id, session_id)
+    )
+    if cursor.fetchone():
+        print(f"'{attendee_name}' is already registered for '{session_title}'.")
+        cursor.close()
+        return
+
+    # Generate next registrationID
+    cursor.execute("SELECT MAX(registrationID) FROM registration")
+    max_id = cursor.fetchone()[0] or 0
+    new_reg_id = max_id + 1
+
+    try:
+        cursor.execute(
+            "INSERT INTO registration (registrationID, attendeeID, sessionID, registeredAt) "
+            "VALUES (%s, %s, %s, NOW())",
+            (new_reg_id, attendee_id, session_id)
+        )
+        mysql_conn.commit()
+        print(f"Success: '{attendee_name}' registered for '{session_title}' (registrationID: {new_reg_id}).")
+    except mysql.connector.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        cursor.close()
+
 # ─── Option 6: View Rooms (from cache) ────────────────────────────────────────
 
 def option6(rooms_cache):
@@ -437,6 +514,8 @@ def main():
             option8(mysql_conn, neo4j_driver)
         elif choice == "9":
             option9(mysql_conn)
+        elif choice == "10":
+            option10(mysql_conn)
         elif choice == "x":
             print("Goodbye!")
             break
