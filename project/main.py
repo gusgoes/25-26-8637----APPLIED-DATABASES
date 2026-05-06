@@ -185,13 +185,12 @@ def option3(mysql_conn):
     print("\nAvailable companies:")
     show_companies(mysql_conn)
     try:
-        attendee_id  = int(input("\nEnter Attendee ID (integer): ").strip())
         name         = input("Enter Attendee Name: ").strip()
         dob          = input("Enter Date of Birth (YYYY-MM-DD): ").strip()
         gender       = input("Enter Gender (Male/Female): ").strip()
         company_id   = int(input("Enter Company ID: ").strip())
     except ValueError:
-        print("Invalid input: ID and Company ID must be integers.")
+        print("Invalid input: Company ID must be an integer.")
         return
 
     if gender not in ("Male", "Female"):
@@ -200,18 +199,20 @@ def option3(mysql_conn):
 
     cursor = mysql_conn.cursor()
     try:
+        cursor.execute("SELECT MAX(attendeeID) FROM attendee")
+        max_id = cursor.fetchone()[0] or 0
+        attendee_id = max_id + 1
+
         cursor.execute(
             "INSERT INTO attendee (attendeeID, attendeeName, attendeeDOB, attendeeGender, attendeeCompanyID) "
             "VALUES (%s, %s, %s, %s, %s)",
             (attendee_id, name, dob, gender, company_id)
         )
         mysql_conn.commit()
-        print(f"Attendee '{name}' added successfully.")
+        print(f"Attendee '{name}' added successfully with ID {attendee_id}.")
     except mysql.connector.IntegrityError as e:
         err = str(e)
-        if "Duplicate entry" in err:
-            print(f"Error: Attendee ID {attendee_id} already exists.")
-        elif "foreign key" in err.lower():
+        if "foreign key" in err.lower():
             print(f"Error: Company ID {company_id} does not exist.")
         else:
             print(f"Database error: {e}")
