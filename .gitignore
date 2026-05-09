@@ -147,6 +147,7 @@ venv.bak/
 # Notas pessoais — nao commitar
 .meu_guia_pessoal.txt
 project/meu_guia_pessoal_audio_ptbr.mp3
+project/meu_guia_pessoal_audio_base_en.txt
 
 # Spyder project settings
 .spyderproject
